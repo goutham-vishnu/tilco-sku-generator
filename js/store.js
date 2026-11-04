@@ -59,7 +59,7 @@ export async function signOut() { if (!DEMO) await (await client()).auth.signOut
 export async function loadAll() {
   if (DEMO) return clone(demo);
   const c = await client();
-  const [brands, products, variants, units, regions, sku_log, legacy_map, allowed_emails] = await Promise.all([
+  const [brands, products, variants, units, regions, sku_log, legacy_map] = await Promise.all([
     c.from('brands').select('*').order('code'),
     c.from('products').select('*').order('code'),
     c.from('variants').select('*').order('type').order('sort'),
@@ -67,9 +67,10 @@ export async function loadAll() {
     c.from('regions').select('*').order('code'),
     c.from('sku_log').select('*').order('created_at', { ascending: false }),
     c.from('legacy_map').select('*').order('created_at', { ascending: false }),
-    c.from('allowed_emails').select('*').order('email'),
   ]).then((rs) => rs.map(ok));
-  return { brands, products, variants, units, regions, sku_log, legacy_map, allowed_emails };
+  // Team access list is loaded separately so the rest of the site still works if its table is missing.
+  const team = await c.from('allowed_emails').select('*').order('email');
+  return { brands, products, variants, units, regions, sku_log, legacy_map, allowed_emails: team.data || [], teamError: team.error?.message || '' };
 }
 
 // ---------- writes ----------

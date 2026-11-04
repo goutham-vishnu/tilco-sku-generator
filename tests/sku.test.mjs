@@ -12,7 +12,7 @@ const examples = [
   ['TCR-12S-BLBK-P2', { brand: 'TCR', product: 'S', capacity: 12, colours: ['BL', 'BK'], pack: 2 }],
   ['TCR-12S-BLBK-P2-V2', { brand: 'TCR', product: 'S', capacity: 12, colours: ['BL', 'BK'], pack: 2, version: 2 }],
   ['TCR-12S-BLBK-P2-V3', { brand: 'TCR', product: 'S', capacity: 12, colours: ['BL', 'BK'], pack: 2, version: 3 }],
-  ['TCR-12GS-CL', { brand: 'TCR', product: 'GS', capacity: 12, colours: ['CL'] }],
+  ['TCR-GS-CL', { brand: 'TCR', product: 'GS', colours: ['CL'] }], // Excel had 12GS; glass shakers come in one size, so no capacity (4 Nov 2026)
   ['TC-01LURN', { brand: 'TC', product: 'URN', capacity: 1 }],
   ['TC-03LURN', { brand: 'TC', product: 'URN', capacity: 3 }],
   ['TC-30MSYR', { brand: 'TC', product: 'SYR', capacity: 30 }],
@@ -47,10 +47,10 @@ for (const [want, input] of examples) {
 t('describe matches the sheet', () => {
   assert.equal(describe(parseSku('TCR-12S-BLBK-P2-V3', reg), reg), 'Tilcore · 12 oz protein shaker, plastic · Blue & Black · 2-pack · 3rd SKU');
 });
-t('12GS reads as glass shaker, not 12 g plastic shaker', () => {
-  const p = parseSku('TCR-12GS-CL', reg);
-  assert.equal(p.product, 'GS'); assert.equal(p.unit, 'OZ');
-});
+t('grams capacity: 90 g loofah', () => { assert.equal(buildSku({ brand: 'TC', product: 'LOF', capacity: 90 }, reg).sku, 'TC-90GLOF'); assert.equal(parseSku('TC-90GLOF', reg).product, 'LOF'); });
+t('Walmart suffix keeps its own count', () => assert.equal(nextVersion('TC-EXH-WM', ['TC-EXH', 'TC-EXH-V2', 'TC-EXH-WM'], reg).next, 2));
+t('marketplace suffix described', () => assert.match(describe(parseSku('TC-PMS-V3-JP', reg), reg), /Japan only/));
+t('Tilcore owns washer bag, clothesline, air vent', () => ['TWB','CLN','VNT'].forEach((c) => assert.equal(reg.products[c].brand, 'TCR')));
 t('colour + size', () => assert.equal(buildSku({ brand: 'PM', product: 'HB', colours: ['BL', 'BK'], size: 'XL' }, reg).sku, 'PM-HB-BLBK-XL'));
 t('100+ capacity uses three digits', () => assert.equal(buildSku({ brand: 'TC', product: 'SYR', capacity: 100 }, reg).sku, 'TC-100MSYR'));
 t('capacity required when product has sizes', () => assert.ok(buildSku({ brand: 'TC', product: 'URN' }, reg).errors.length));
@@ -77,7 +77,7 @@ t('pet massager: V2 + V3 exist → V4', () => assert.equal(nextVersion('TC-PMS',
 t('urinal single: P1-V11 counts as single → V12', () => assert.equal(nextVersion('TC-01LURN', log, reg).next, 12));
 t('urinal 2-pack → V12', () => assert.equal(nextVersion('TC-01LURN-P2', log, reg).next, 12));
 t('urinal 3 L is a different product → first', () => assert.equal(nextVersion('TC-03LURN', log, reg).next, 1));
-t('region has its own counter', () => assert.equal(nextVersion('TC-PMS-EU', log, reg).next, 1));
+t('marketplace suffix has its own counter', () => assert.equal(nextVersion('TC-PMS-EU', log, reg).next, 1));
 t('unversioned first SKU counts as 1', () => assert.equal(nextVersion('PM-PCR', ['PM-PCR'], reg).next, 2));
 t('versions with gaps use max + 1', () => assert.equal(nextVersion('PM-PCR', ['PM-PCR', 'PM-PCR-V5'], reg).next, 6));
 

@@ -50,7 +50,8 @@ async function start() {
   if (!S.user) { $('#tabs').hidden = true; return renderLogin(); }
   if (!(await store.hasAccess())) { $('#tabs').hidden = true; return renderNoAccess(); }
   $('#tabs').hidden = false;
-  await reload();
+  try { await reload(); S.loadError = ''; }
+  catch (e) { S.data = null; S.loadError = e.message; }
   render();
 }
 
@@ -96,7 +97,19 @@ $('#tabs').addEventListener('click', (e) => {
 });
 
 function render() {
+  if (!S.data && S.tab !== 'rules') {
+    $('#app').innerHTML = `<div class="panel">${msgList('err', ['Could not load data from the database: ' + (S.loadError || 'unknown error')])}
+      <p class="hint">Check that supabase/setup.sql was run in Supabase, then reload. If it keeps happening, send this message to whoever maintains the site.</p>
+      <button class="btn" id="retry">Try again</button></div>`;
+    $('#retry').onclick = () => start();
+    return;
+  }
+  try {
   ({ generate: renderGenerate, decode: renderDecode, log: renderLog, legacy: renderLegacy, registry: renderRegistry, team: renderTeam, rules: renderRules })[S.tab]();
+  } catch (e) {
+    console.error(e);
+    $('#app').innerHTML = `<div class="panel">${msgList('err', ['Something went wrong showing this tab: ' + e.message])}</div>`;
+  }
 }
 
 // ---------- SKU display ----------
@@ -107,7 +120,7 @@ function skuHtml(blocks) {
 const LEGEND = `<div class="legend">
   <span><i style="background:var(--b-brand)"></i>Brand</span><span><i style="background:var(--b-capprod)"></i>Capacity + product</span>
   <span><i style="background:var(--b-variant)"></i>Variant</span><span><i style="background:var(--b-pack)"></i>Pack</span>
-  <span><i style="background:var(--b-version)"></i>Version</span><span><i style="background:var(--b-region)"></i>Region</span></div>`;
+  <span><i style="background:var(--b-version)"></i>Version</span><span><i style="background:var(--b-region)"></i>Marketplace</span></div>`;
 
 // ---------- GENERATE ----------
 function computeDraft() {
@@ -154,9 +167,9 @@ function renderGenerate() {
         <div class="field"><label for="f-pack">Units in pack</label>
           <input id="f-pack" type="number" min="1" step="1" inputmode="numeric" value="${esc(f.pack)}"></div>
       </div>
-      <div class="field"><label for="f-region">Region suffix</label>
-        <select id="f-region">${opt('', 'None (same unit in every marketplace)', f.region)}${d.regions.map((r) => opt(r.code, `${r.name} (${r.code})`, f.region)).join('')}</select>
-        <div class="hint">Only when the physical unit differs for that region. Each region keeps its own version counter.</div></div>
+      <div class="field"><label for="f-region">Marketplace suffix</label>
+        <select id="f-region">${opt('', 'None (US, or shared across marketplaces)', f.region)}${d.regions.map((r) => opt(r.code, `${r.name} only (-${r.code})`, f.region)).join('')}</select>
+        <div class="hint">Add one when this SKU is opened for a single marketplace (or the unit differs there). Each marketplace suffix keeps its own version count.</div></div>
       <div class="field"><label class="inline"><input type="checkbox" id="f-override" ${f.override ? 'checked' : ''}> Set the version number by hand</label>
         ${f.override ? `<input id="f-version" type="number" min="1" step="1" value="${esc(f.version)}" placeholder="e.g. 3" style="margin-top:6px">
         <div class="hint">1 means the first SKU (no version block). Use this to reuse an existing SKU for a new marketplace, or when older versions aren't in the log yet.</div>` : ''}</div>
@@ -199,7 +212,7 @@ function updateOutput() {
   let versionNote = '';
   if (ready && !f.override) {
     versionNote = auto.matches.length
-      ? `This is the ${ordinal(auto.next)} SKU for this product. Already in the log: ${auto.matches.map((m) => `<code>${esc(m.sku)}</code>`).join(', ')}.`
+      ? `This is the ${ordinal(auto.next)} SKU for this product. Earlier SKUs (log and legacy): ${auto.matches.map((m) => `<code>${esc(m.sku)}</code>`).join(', ')}.`
       : 'No earlier SKU for this product in the log, so this is the 1st SKU (no version block).';
   }
 
@@ -282,7 +295,7 @@ function decodeOut() {
   const p = parseSku(target, S.reg);
   const rows = S.data.sku_log.filter((x) => x.sku === p.sku);
   let html = '';
-  if (legacy) html += msgList('ok', [`Legacy SKU. Its new name is ${legacy.new_sku}.`]);
+  if (legacy) html += msgList('ok', [`Legacy SKU (stays as it is on the marketplace). For version counting it counts as ${legacy.new_sku}.`]);
   if (!p.errors.length) {
     const b = buildSku({ brand: p.brand, product: p.product, capacity: p.capacity, colours: p.colours, size: p.size, pack: p.pack, version: p.version, region: p.region }, S.reg);
     // keep a legacy P1 visible as written, before the version/region blocks
@@ -333,18 +346,22 @@ function downloadCsv(name, rows, cols) {
 
 // ---------- LEGACY ----------
 function renderLegacy() {
-  const rows = S.data.legacy_map;
+  const rows = [...S.data.legacy_map].sort((x, y) => String(x.new_sku).localeCompare(String(y.new_sku), 'en', { numeric: true }));
+  const q = (S.legacyQuery || '').toLowerCase();
+  const shown = rows.filter((r) => !q || [r.legacy_sku, r.new_sku, r.product, r.asin, r.marketplaces].some((v) => String(v || '').toLowerCase().includes(q)));
   $('#app').innerHTML = `
-    <div class="grid">
+    <div>
       <section>
         <h2>Legacy mapping</h2>
-        <p class="muted small">Amazon SKUs can't be renamed, so old SKUs stay live and are recorded here against their new name. Their new names also count towards version numbers.</p>
-        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Legacy SKU</th><th>New name</th><th>Product</th><th>Status</th><th>Notes</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td><code>${esc(r.legacy_sku)}</code></td><td><code>${esc(r.new_sku)}</code></td><td>${esc(r.product)}</td><td>${badge(r.status)}</td><td>${esc(r.notes)}</td></tr>`).join('')}
-        </tbody></table></div>` : '<p class="muted">No legacy SKUs mapped yet.</p>'}
+        <p class="muted small">Old SKUs stay exactly as they are on Amazon and Walmart. "Counts as" is only the label the site uses to work out the next version number. It is not a rename.</p>
+        <div class="toolbar"><input id="lg-q" placeholder="Search legacy SKU, label, product, ASIN…" value="${esc(S.legacyQuery || '')}"><span class="muted small">${shown.length} of ${rows.length}</span></div>
+        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Legacy SKU</th><th>Counts as</th><th>Product</th><th>Marketplaces</th><th>ASIN</th><th>Status</th></tr></thead><tbody>
+          ${shown.slice(0, 300).map((r) => `<tr><td><code>${esc(r.legacy_sku)}</code></td><td><code>${esc(r.new_sku)}</code></td><td>${esc(r.product)}</td><td>${esc(r.marketplaces || '')}</td><td>${esc(r.asin || '')}</td><td>${badge(r.status)}</td></tr>`).join('')}
+        </tbody></table></div>${shown.length > 300 ? '<p class="hint">Showing the first 300. Search to narrow down.</p>' : ''}` : '<p class="muted">No legacy SKUs mapped yet.</p>'}
       </section>
-      <section class="panel">
-        <h2>Add a legacy SKU</h2>
+      <details class="panel" style="margin-top:20px;max-width:640px">
+        <summary>Add a legacy SKU</summary>
+        <div style="margin-top:12px">
         <form id="lg">
           <div class="field"><label for="lg-old">Legacy SKU (as on Amazon)</label><input id="lg-old" required spellcheck="false"></div>
           <div class="field"><label for="lg-new">New name</label><input id="lg-new" required spellcheck="false" placeholder="e.g. TCR-12S-BLBK-P2-V3"><div id="lg-new-msg"></div></div>
@@ -353,8 +370,11 @@ function renderLegacy() {
             <div class="field"><label for="lg-notes">Notes</label><input id="lg-notes"></div></div>
           <button class="btn primary" type="submit">Add mapping</button>
         </form>
-      </section>
+        </div>
+      </details>
     </div>`;
+  const lq = $('#lg-q');
+  lq.addEventListener('input', () => { S.legacyQuery = lq.value; const p = lq.selectionStart; renderLegacy(); const n = $('#lg-q'); n.focus(); n.setSelectionRange(p, p); });
   const nw = $('#lg-new');
   nw.addEventListener('input', () => {
     const p = parseSku(nw.value, S.reg);
@@ -462,6 +482,12 @@ function renderRegistry() {
 function renderTeam() {
   const rows = S.data.allowed_emails || [];
   const fmt = (d) => d ? new Date(d).toISOString().slice(0, 10) : '';
+  if (S.data.teamError) {
+    $('#app').innerHTML = `<div class="panel">${msgList('err', ['The Team access list is not set up in the database yet (' + S.data.teamError + ').'])}
+      <p>To fix it, in Supabase open <strong>SQL Editor → New query</strong>, paste in the whole of <code>supabase/002_team_access.sql</code> and click <strong>Run</strong>. Then reload this page.</p>
+      <p class="hint">Everything else on the site works without it. @tilcotrading.com users can already sign in; only outside emails need this list.</p></div>`;
+    return;
+  }
   $('#app').innerHTML = `
     <div class="grid">
       <section>
@@ -516,7 +542,7 @@ function renderRules() {
         <li>Fixed-width product codes within a family (PCR / PCE / PCS).</li>
         <li>Pack quantity lives in the pack block. Singles carry no pack block.</li>
         <li>Never encode anything that changes: supplier, cost, year, channel.</li>
-        <li>One SKU across marketplaces for new listings. Add -EU / -JP at the very end only when the physical unit differs.</li>
+        <li>One SKU across marketplaces for new listings. A SKU opened for one marketplace only (or whose unit differs there) ends with that marketplace: -CA, -UK, -EU, -JP or -WM (Walmart). Each suffix keeps its own version count.</li>
         <li>A code is never reused, including after a product is discontinued.</li>
         <li>New SKUs only, no retrofitting. Legacy SKUs go in the Legacy mapping.</li>
         <li>Register the code before it goes live. Nothing goes live while its code is PROPOSED.</li>
@@ -528,7 +554,10 @@ function renderRules() {
       <div class="panel">
         <h2>Decisions made 4 Nov 2026</h2>
         <ul>
-          <li><strong>Region suffixes keep their own version counter.</strong> <code>TC-30MSYR-EU</code>, then <code>TC-30MSYR-V2-EU</code>, independent of the non-region SKU. The region always comes last.</li>
+          <li><strong>Marketplace suffixes keep their own version count.</strong> A SKU opened only for Japan is <code>TC-PMS-JP</code>, then <code>TC-PMS-V2-JP</code>, independent of the US / shared SKU. The suffix always comes last. Walmart is <code>-WM</code>.</li>
+          <li><strong>Live exceptions:</strong> <code>TC-PMS-V2</code> and <code>TC-TPC-P6-V4</code> went live in Japan without <code>-JP</code>. They count towards Japan, so the next ones are <code>TC-PMS-V3-JP</code> and <code>TC-TPC-P6-V5-JP</code>.</li>
+          <li><strong>Brands from legacy SKUs:</strong> TCORE items (shakers, washer bags, clotheslines, air vents) are Tilcore. The Beard and Hair Roller (old TCR-001) is Tilcare. The holder belt is Pill Mill.</li>
+          <li><strong>Glass shakers</strong> come in one size, so no capacity block: <code>TCR-GS-BK</code>.</li>
           <li><strong>PROPOSED codes:</strong> the generator previews the SKU with a warning, but it can't be registered until the code is CONFIRMED.</li>
           <li><strong><code>TC-01LURN-P1-V11</code></strong> is live on Amazon and stays as is (known exception). It counts as the single for versioning, so the next single 1 L urinal is <code>TC-01LURN-V12</code>. New SKUs never get P1.</li>
           <li><strong>TPC (Toothpaste caps)</strong> added to the product registry under TC; it was used in the log but missing.</li>
@@ -537,10 +566,10 @@ function renderRules() {
       <div class="panel" style="margin-top:20px">
         <h2>Open decisions</h2>
         <ol>
-          <li>Ear washer "manual vacuum": EWMV vs EWV. Listed as EWV for now.</li>
-          <li>Does the holder belt belong under Pill Mill? Listed as PM.</li>
+          <li><s>Ear washer "manual vacuum"</s>: settled as EWV (only one vacuum model exists).</li>
+          <li><s>Holder belt brand</s>: settled as Pill Mill (legacy SKUs are PMTH / PMHB).</li>
           <li>Confirm all PROPOSED product codes.</li>
-          <li>Which SKUs need a region suffix?</li>
+          <li>Insulin syringes (0.3 / 0.5 mL, needle gauge) can't be written yet. Needs a capacity rule.</li>
           <li>Tilvolt (TV) scope.</li>
         </ol>
         <p class="hint">Owner: Tilen</p>

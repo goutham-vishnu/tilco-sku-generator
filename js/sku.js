@@ -173,13 +173,13 @@ export function describe(p, reg) {
   if (p.size) parts.push(reg.sizes[p.size]?.name || p.size);
   parts.push(p.pack > 1 ? `${p.pack}-pack` : 'Single');
   parts.push(`${ordinal(p.version)} SKU`);
-  if (p.region) parts.push(`${reg.regions[p.region]?.name || p.region}-specific unit`);
+  if (p.region) parts.push(`${reg.regions[p.region]?.name || p.region} only`);
   return parts.join(' · ');
 }
 
 /**
  * The identity of a product for version counting: everything except the version.
- * Region is part of the key (each region keeps its own counter, decided 4 Nov 2026).
+ * The marketplace suffix is part of the key: each suffix keeps its own counter (decided 4 Nov 2026).
  * P1 is treated as a single, so legacy P1 SKUs count towards the same product.
  */
 export function baseKey(p) {

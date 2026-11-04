@@ -83,6 +83,8 @@ create table if not exists public.legacy_map (
   product text not null default '',
   status text not null default 'ACTIVE' check (status in ('ACTIVE', 'SELLING OUT', 'RETIRED')),
   notes text not null default '',
+  marketplaces text not null default '',
+  asin text not null default '',
   created_by text default (auth.jwt() ->> 'email'),
   created_at timestamptz not null default now()
 );

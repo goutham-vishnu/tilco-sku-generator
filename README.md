@@ -57,7 +57,8 @@ From then on, every `git push` to `main` redeploys automatically.
 4. Add the older SKUs to the **SKU Log** or **Legacy** tab, so version numbers continue from the right place.
 
 ## Rules decided on 4 Nov 2026 (beyond the Excel)
-- **Region suffixes:** they keep their own version counter, and the region goes last: `TC-30MSYR-EU`, then `TC-30MSYR-V2-EU`.
+- **Marketplace suffixes:** a SKU opened for one marketplace only ends with `-CA`, `-UK`, `-EU`, `-JP` or `-WM` (Walmart), and each suffix keeps its own version count: `TC-PMS-JP`, then `TC-PMS-V2-JP`. No suffix = US or shared across marketplaces.
+- **Legacy SKUs** from the stock file are loaded once with `003_legacy_import.sql`, which is kept outside this repo because it contains internal product data.
 - **PROPOSED product codes:** you can preview the SKU with a warning, but registering it is blocked. The database enforces this too.
 - **`TC-01LURN-P1-V11`:** it's live on Amazon, so it stays as a known exception. P1 counts as a single for versioning, so the next single 1 L urinal is `TC-01LURN-V12`.
 - **`TPC` (Toothpaste caps):** added to the registry under TC.
