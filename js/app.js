@@ -271,7 +271,10 @@ function updateOutput() {
   let versionNote = '';
   if (ready && !f.override) {
     versionNote = auto.matches.length
-      ? `This is the ${ordinal(auto.next)} SKU for this product. Earlier SKUs (log and legacy): ${auto.matches.map((m) => `<code>${esc(m.sku)}</code>`).join(', ')}.`
+      ? `This is the ${ordinal(auto.next)} SKU for this product. Earlier SKUs: ${auto.matches.map((m) => {
+          const old = S.data.legacy_map.filter((x) => x.new_sku === m.sku).map((x) => x.legacy_sku);
+          return `<code>${esc(m.sku)}</code>${old.length ? ` (old SKU ${old.map((o) => `<code>${esc(o)}</code>`).join(', ')})` : ''}`;
+        }).join(', ')}.`
       : 'No earlier SKU for this product in the log, so this is the 1st SKU (no version block).';
   }
 
