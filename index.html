@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tilco SKU Generator</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f3a5f'/><text x='16' y='22' font-family='Arial' font-weight='700' font-size='14' fill='white' text-anchor='middle'>SKU</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="config.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="title">
+        <span class="logo">SKU</span>
+        <div>
+          <h1>Tilco SKU Generator</h1>
+          <p class="sub">Naming convention · Final 23 Sep 2026</p>
+        </div>
+      </div>
+      <div id="userbox" class="userbox"></div>
+    </div>
+    <nav class="wrap tabs" id="tabs" hidden>
+      <button data-tab="generate" class="active">Generate</button>
+      <button data-tab="decode">Decode</button>
+      <button data-tab="log">SKU Log</button>
+      <button data-tab="legacy">Legacy</button>
+      <button data-tab="registry">Registry</button>
+      <button data-tab="rules">Rules</button>
+    </nav>
+  </header>
+  <div id="demo-banner" class="banner" hidden>
+    Demo mode: no database is connected, so anything you register is lost on reload. Add your Supabase keys to <code>config.js</code> to go live.
+  </div>
+  <main class="wrap" id="app">
+    <p class="muted">Loading…</p>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
