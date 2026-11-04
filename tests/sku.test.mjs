@@ -64,6 +64,11 @@ t('V1 never produced', () => assert.equal(buildSku({ brand: 'PM', product: 'PCR'
 t('parse rejects V1', () => assert.ok(parseSku('PM-PCR-V1', reg).errors.length));
 t('parse rejects unpadded capacity', () => assert.ok(parseSku('TC-3LURN', reg).errors.length));
 t('parse flags P1', () => assert.ok(parseSku('TC-01LURN-P1-V11', reg).warnings.length));
+t('spaces and en dashes are tidied', () => {
+  const p = parseSku('TC - 01LURN – eu', reg);
+  assert.deepEqual(p.errors, []); assert.equal(p.sku, 'TC-01LURN-EU'); assert.equal(p.region, 'EU'); assert.equal(p.warnings.length, 1);
+});
+t('clean input gives no tidy warning', () => assert.equal(parseSku('tc-01lurn', reg).warnings.length, 0));
 t('parse rejects legacy junk', () => assert.ok(parseSku('TCORE12OZSBB-ASIN1-SKU3', reg).errors.length));
 
 const log = seed.sku_log.map((r) => r.sku);

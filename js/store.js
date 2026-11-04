@@ -3,6 +3,8 @@
 import * as seed from './seed.js';
 
 const cfg = window.SKU_CONFIG || {};
+// config.js always defines SKU_CONFIG, so if it's missing the file has a typo (or failed to load).
+export const CONFIG_BROKEN = !window.SKU_CONFIG;
 export const DEMO = !(cfg.supabaseUrl && cfg.supabaseAnonKey);
 export const EMAIL_DOMAIN = (cfg.allowedEmailDomain || '').toLowerCase();
 
@@ -24,6 +26,7 @@ const demo = {
   units: clone(seed.units), regions: clone(seed.regions),
   sku_log: seed.sku_log.map((r, i) => ({ id: i + 1, opened: null, ...r })),
   legacy_map: seed.legacy_map.map((r, i) => ({ id: i + 1, ...r })),
+  allowed_emails: [],
 };
 let demoId = 1000;
 
@@ -40,9 +43,15 @@ export async function onAuthChange(fn) {
 }
 export async function signIn(email) {
   email = email.trim().toLowerCase();
-  if (EMAIL_DOMAIN && !email.endsWith('@' + EMAIL_DOMAIN)) throw new Error(`Use your @${EMAIL_DOMAIN} email address.`);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid email address.');
   const c = await client();
   ok(await c.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } }));
+}
+/** True if the signed-in user may use the site (@tilcotrading.com or on the Team access list). Checked by the database. */
+export async function hasAccess() {
+  if (DEMO) return true;
+  const c = await client();
+  return !!ok(await c.rpc('is_tilco'));
 }
 export async function signOut() { if (!DEMO) await (await client()).auth.signOut(); }
 
@@ -50,7 +59,7 @@ export async function signOut() { if (!DEMO) await (await client()).auth.signOut
 export async function loadAll() {
   if (DEMO) return clone(demo);
   const c = await client();
-  const [brands, products, variants, units, regions, sku_log, legacy_map] = await Promise.all([
+  const [brands, products, variants, units, regions, sku_log, legacy_map, allowed_emails] = await Promise.all([
     c.from('brands').select('*').order('code'),
     c.from('products').select('*').order('code'),
     c.from('variants').select('*').order('type').order('sort'),
@@ -58,8 +67,9 @@ export async function loadAll() {
     c.from('regions').select('*').order('code'),
     c.from('sku_log').select('*').order('created_at', { ascending: false }),
     c.from('legacy_map').select('*').order('created_at', { ascending: false }),
+    c.from('allowed_emails').select('*').order('email'),
   ]).then((rs) => rs.map(ok));
-  return { brands, products, variants, units, regions, sku_log, legacy_map };
+  return { brands, products, variants, units, regions, sku_log, legacy_map, allowed_emails };
 }
 
 // ---------- writes ----------
@@ -72,6 +82,8 @@ async function insert(table, row) {
       throw new Error(`${row.code} already exists.`);
     if (table === 'legacy_map' && demo.legacy_map.some((x) => x.legacy_sku === row.legacy_sku))
       throw new Error(`${row.legacy_sku} is already mapped.`);
+    if (table === 'allowed_emails' && demo.allowed_emails.some((x) => x.email === row.email))
+      throw new Error(`${row.email} already has access.`);
     demo[table].unshift(r);
     return r;
   }
@@ -101,3 +113,10 @@ export const addProduct = (row) => insert('products', row);
 export const addVariant = (row) => insert('variants', row);
 export const addRegion = (row) => insert('regions', row);
 export const updateProduct = (code, patch) => update('products', { code }, patch);
+
+export const addAccess = (email, name) => insert('allowed_emails', { email: email.trim().toLowerCase(), name: (name || '').trim() });
+export async function removeAccess(email) {
+  if (DEMO) { demo.allowed_emails = demo.allowed_emails.filter((x) => x.email !== email); return; }
+  const c = await client();
+  ok(await c.from('allowed_emails').delete().eq('email', email));
+}

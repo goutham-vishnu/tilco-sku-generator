@@ -112,10 +112,14 @@ function splitCapProd(tok, reg) {
 }
 
 /** Parse any SKU in the new format. Returns parts plus errors/warnings; never throws. */
+/** Forgive pasted input: drop spaces, turn en/em dashes and underscores into hyphens, uppercase. */
+export const tidy = (raw) => String(raw || '').toUpperCase().replace(/\s+/g, '').replace(/[‐-―_]/g, '-');
+
 export function parseSku(raw, reg) {
-  const sku = String(raw || '').trim().toUpperCase();
+  const sku = tidy(raw);
   const out = { sku, colours: [], size: '', pack: 1, version: 1, region: '', errors: [], warnings: [] };
   if (!sku) { out.errors.push('Empty SKU.'); return out; }
+  if (sku !== String(raw).trim().toUpperCase()) out.warnings.push(`Read as ${sku}. Spaces and other separators were tidied up; a real SKU never contains them.`);
   if (!ALLOWED.test(sku)) out.errors.push('Contains characters other than A-Z, 0-9 and hyphen.');
   const t = sku.split('-');
   if (t.some((x) => x === '')) { out.errors.push('Empty block (double hyphen or trailing hyphen).'); return out; }

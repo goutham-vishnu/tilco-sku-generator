@@ -3,7 +3,7 @@
 A microsite that builds SKU codes from the Tilco naming convention (final, 23 Sep 2026), works out the version number from the SKU Log, and keeps the registries and log in one shared database.
 
 - **Hosting:** Netlify, deployed from GitHub
-- **Database and sign-in:** Supabase (only `@tilcotrading.com` emails can read or write)
+- **Database and sign-in:** Supabase. `@tilcotrading.com` emails get in automatically; anyone else (e.g. Gmail) must be added in the **Team** tab. The database enforces this.
 - **No build step:** plain HTML, CSS and JavaScript
 
 Open `index.html` with no keys in `config.js` and it runs in **demo mode** (data from the Excel, nothing saved).
@@ -28,7 +28,9 @@ Open `index.html` with no keys in `config.js` and it runs in **demo mode** (data
 3. In **Authentication → URL Configuration**, set **Site URL** to your Netlify URL (you'll get it in step 3; you can come back to this).
 4. In **Project Settings → API**, copy the **Project URL** and the **anon public** key into `config.js`.
 
-The anon key is meant to be public. The database itself refuses anyone who isn't signed in with an @tilcotrading.com email.
+The anon key is meant to be public. The database itself refuses anyone who isn't signed in with an @tilcotrading.com email or listed under Team access.
+
+**Already ran `setup.sql` before the Team access list existed?** Run `supabase/002_team_access.sql` once in the SQL Editor too.
 
 ### 2. GitHub
 ```bash
@@ -50,8 +52,9 @@ From then on, every `git push` to `main` redeploys automatically.
 
 ### 4. First use
 1. Sign in with your work email. You'll get a magic link, so there's no password to manage.
-2. Go to **Registry** and set product codes to CONFIRMED as Tilen signs them off. SKUs can't be registered while their code is PROPOSED.
-3. Add the older SKUs to the **SKU Log** or **Legacy** tab, so version numbers continue from the right place.
+2. In the **Team** tab, add the email of anyone who doesn't have a @tilcotrading.com address. They can sign in straight after.
+3. Go to **Registry** and set product codes to CONFIRMED as Tilen signs them off. SKUs can't be registered while their code is PROPOSED.
+4. Add the older SKUs to the **SKU Log** or **Legacy** tab, so version numbers continue from the right place.
 
 ## Rules decided on 4 Nov 2026 (beyond the Excel)
 - **Region suffixes:** they keep their own version counter, and the region goes last: `TC-30MSYR-EU`, then `TC-30MSYR-V2-EU`.
@@ -64,4 +67,5 @@ From then on, every `git push` to `main` redeploys automatically.
 - **Changing the rules engine:** edit `js/sku.js`, then run `node tests/sku.test.mjs` before you push.
 - **Rebuilding the setup SQL:** run `node scripts/make-setup-sql.mjs` after editing `js/seed.js`. You only need this for a fresh database; for a live one, use the Registry tab instead.
 - **Nothing can be deleted** (rule 12). Retire SKUs and discontinue codes instead.
-- **Restricting sign-ups further:** in Supabase, go to **Authentication → Providers → Email**, turn off "Allow new users to sign up", and invite people by hand.
+- **Who can get in:** anyone can request a sign-in link, but only @tilcotrading.com and Team-listed emails see any data. To stop strangers even creating an account, go to **Authentication → Providers → Email** in Supabase, turn off "Allow new users to sign up", and invite people from **Authentication → Users**.
+- **Typos in `config.js`:** the site shows a red error instead of loading. Press F12 and check the Console for the line.

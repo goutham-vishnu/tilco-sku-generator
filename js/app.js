@@ -31,6 +31,10 @@ async function reload() {
 
 // ---------- boot ----------
 async function boot() {
+  if (store.CONFIG_BROKEN) {
+    $('#app').innerHTML = `<div class="panel">${msgList('err', ['config.js could not be read, so the site can\'t connect to the database. It usually means a typo in that file, e.g. a missing quote or comma. Open the browser console (F12) to see the exact line.'])}</div>`;
+    return;
+  }
   if (store.DEMO) $('#demo-banner').hidden = false;
   try {
     S.user = await store.currentUser();
@@ -44,6 +48,7 @@ async function boot() {
 async function start() {
   renderUser();
   if (!S.user) { $('#tabs').hidden = true; return renderLogin(); }
+  if (!(await store.hasAccess())) { $('#tabs').hidden = true; return renderNoAccess(); }
   $('#tabs').hidden = false;
   await reload();
   render();
@@ -60,7 +65,7 @@ function renderLogin() {
   $('#app').innerHTML = `
     <div class="panel login">
       <h2>Sign in</h2>
-      <p class="muted small">Enter your ${store.EMAIL_DOMAIN ? '@' + esc(store.EMAIL_DOMAIN) : ''} email. We'll send you a sign-in link.</p>
+      <p class="muted small">Enter your email and we'll send you a sign-in link. ${store.EMAIL_DOMAIN ? `@${esc(store.EMAIL_DOMAIN)} addresses get in straight away; any other address needs adding to Team access by a colleague first.` : ''}</p>
       <form id="login"><div class="field"><input type="email" id="email" required placeholder="you@${esc(store.EMAIL_DOMAIN || 'company.com')}" autocomplete="email"></div>
       <button class="btn primary" type="submit">Send link</button></form>
       <div id="login-msg"></div>
@@ -72,6 +77,17 @@ function renderLogin() {
   };
 }
 
+function renderNoAccess() {
+  $('#app').innerHTML = `
+    <div class="panel login">
+      <h2>No access yet</h2>
+      <p>You're signed in as <strong>${esc(S.user.email)}</strong>, but this address isn't on the Team access list.</p>
+      <p class="muted small">Ask a colleague with a @${esc(store.EMAIL_DOMAIN || 'tilcotrading.com')} email to add you under <strong>Team</strong>, then reload this page.</p>
+      <button class="btn" id="na-reload">Reload</button>
+    </div>`;
+  $('#na-reload').onclick = () => location.reload();
+}
+
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-tab]'); if (!b) return;
   S.tab = b.dataset.tab;
@@ -80,7 +96,7 @@ $('#tabs').addEventListener('click', (e) => {
 });
 
 function render() {
-  ({ generate: renderGenerate, decode: renderDecode, log: renderLog, legacy: renderLegacy, registry: renderRegistry, rules: renderRules })[S.tab]();
+  ({ generate: renderGenerate, decode: renderDecode, log: renderLog, legacy: renderLegacy, registry: renderRegistry, team: renderTeam, rules: renderRules })[S.tab]();
 }
 
 // ---------- SKU display ----------
@@ -264,7 +280,7 @@ function decodeOut() {
   const legacy = S.data.legacy_map.find((x) => x.legacy_sku.toUpperCase() === raw);
   const target = legacy ? legacy.new_sku : raw;
   const p = parseSku(target, S.reg);
-  const rows = S.data.sku_log.filter((x) => x.sku === target);
+  const rows = S.data.sku_log.filter((x) => x.sku === p.sku);
   let html = '';
   if (legacy) html += msgList('ok', [`Legacy SKU. Its new name is ${legacy.new_sku}.`]);
   if (!p.errors.length) {
@@ -440,6 +456,46 @@ function renderRegistry() {
       await reload(); toast(`${c.code} added`); renderRegistry();
     } catch (err) { toast(err.message); }
   };
+}
+
+// ---------- TEAM ----------
+function renderTeam() {
+  const rows = S.data.allowed_emails || [];
+  const fmt = (d) => d ? new Date(d).toISOString().slice(0, 10) : '';
+  $('#app').innerHTML = `
+    <div class="grid">
+      <section>
+        <h2>Team access</h2>
+        <p class="muted small">Anyone with a @${esc(store.EMAIL_DOMAIN || 'tilcotrading.com')} email can sign in without being added. Everyone else, e.g. Gmail users, needs to be on this list. Access is checked by the database, not just the website.</p>
+        ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Email</th><th>Name</th><th>Added by</th><th>Added</th><th></th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.name)}</td><td>${esc(r.added_by)}</td><td>${esc(fmt(r.created_at))}</td>
+            <td><button class="btn sm" data-rm="${esc(r.email)}">Remove</button></td></tr>`).join('')}
+        </tbody></table></div>` : '<p class="muted">No outside emails added yet.</p>'}
+      </section>
+      <section class="panel">
+        <h2>Add someone</h2>
+        <form id="tm">
+          <div class="field"><label for="tm-email">Email</label><input id="tm-email" type="email" required placeholder="name@gmail.com" autocomplete="off"></div>
+          <div class="field"><label for="tm-name">Name</label><input id="tm-name" placeholder="Optional"></div>
+          <button class="btn primary" type="submit">Give access</button>
+          <p class="hint">They can then sign in with that exact address. Removing them takes effect on their next page load.</p>
+        </form>
+      </section>
+    </div>`;
+  $('#tm').onsubmit = async (e) => {
+    e.preventDefault();
+    const email = $('#tm-email').value.trim().toLowerCase();
+    if (store.EMAIL_DOMAIN && email.endsWith('@' + store.EMAIL_DOMAIN)) return toast(`@${store.EMAIL_DOMAIN} addresses already have access.`);
+    try { await store.addAccess(email, $('#tm-name').value); await reload(); toast(`${email} can now sign in`); renderTeam(); }
+    catch (err) { toast(err.message); }
+  };
+  $$('button[data-rm]').forEach((b) => b.addEventListener('click', async () => {
+    const email = b.dataset.rm;
+    const self = S.user?.email?.toLowerCase() === email;
+    if (!confirm(self ? `This is you. Removing ${email} will lock you out. Continue?` : `Remove access for ${email}?`)) return;
+    try { await store.removeAccess(email); await reload(); toast(`${email} removed`); renderTeam(); }
+    catch (err) { toast(err.message); }
+  }));
 }
 
 // ---------- RULES ----------
