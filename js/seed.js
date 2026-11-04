@@ -119,6 +119,11 @@ export const products = [
   P("TMW", "TMJ warmer", "TC", null, 'Added from the stock file (4 Nov 2026)'),
   P("HDR", "Cordless hair dryer", "TC", null, 'Added from the stock file (4 Nov 2026)'),
   P("SVR", "Smart voice recorder", "TV", null, 'Added from the stock file (4 Nov 2026)'),
+  P("URF", "Female urinal", "TC", null, 'Added from the stock file (4 Nov 2026)'),
+  P("CG2", "Chew crayon, girl, design 2", "TCC", null, 'Added from the stock file (4 Nov 2026)'),
+  P("CB2", "Chew crayon, boy, design 2", "TCC", null, 'Added from the stock file (4 Nov 2026)'),
+  P("PG2", "Chew pencil, girl, design 2", "TCC", null, 'Added from the stock file (4 Nov 2026)'),
+  P("PB2", "Chew pencil, boy, design 2", "TCC", null, 'Added from the stock file (4 Nov 2026)'),
 ];
 
 export const variants = [
