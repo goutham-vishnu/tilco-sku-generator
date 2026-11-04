@@ -149,8 +149,10 @@ function renderGenerate() {
         <select id="f-brand"><option value="">Choose…</option>${d.brands.map((b) => opt(b.code, `${b.name} (${b.code})`, f.brand)).join('')}</select></div>
       <div class="field"><label for="f-product">Product</label>
         <select id="f-product" ${f.brand ? '' : 'disabled'}><option value="">${f.brand ? 'Choose…' : 'Choose a brand first'}</option>
-        ${products.map((p) => opt(p.code, `${p.name} (${p.code})${p.status === 'PROPOSED' ? ' · proposed' : ''}`, f.product)).join('')}</select>
-        ${f.brand && !products.length ? '<div class="hint">No products registered for this brand yet. Add one in the Registry tab.</div>' : ''}
+        ${products.map((p) => opt(p.code, `${p.name} (${p.code})${p.status === 'PROPOSED' ? ' · proposed' : ''}`, f.product)).join('')}
+        ${f.brand ? `<option value="__new"${S.newProd ? ' selected' : ''}>+ New product…</option>` : ''}</select>
+        ${f.brand && !products.length && !S.newProd ? '<div class="hint">No products registered for this brand yet. Choose "+ New product…" to add one.</div>' : ''}
+        ${S.newProd ? newProductForm() : ''}
         ${product?.notes ? `<div class="hint">${esc(product.notes)}</div>` : ''}</div>
       ${unit ? `<div class="field"><label for="f-cap">Capacity</label>
         <div class="suffix"><input id="f-cap" type="number" min="1" max="999" step="1" inputmode="numeric" value="${esc(f.capacity)}" placeholder="e.g. ${unit.code === 'OZ' ? '12' : unit.code === 'L' ? '1' : '30'}"><span>${esc(unit.short)}</span></div>
@@ -179,8 +181,12 @@ function renderGenerate() {
   </div>`;
 
   const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
-  on('#f-brand', 'change', (e) => { f.brand = e.target.value; f.product = ''; f.capacity = ''; renderGenerate(); });
-  on('#f-product', 'change', (e) => { f.product = e.target.value; if (!S.reg.products[f.product]?.cap_unit) f.capacity = ''; renderGenerate(); });
+  on('#f-brand', 'change', (e) => { f.brand = e.target.value; f.product = ''; f.capacity = ''; S.newProd = null; renderGenerate(); });
+  on('#f-product', 'change', (e) => {
+    if (e.target.value === '__new') { S.newProd = { name: '', code: '', touched: false, unit: '' }; f.product = ''; renderGenerate(); $('#np2-name')?.focus(); return; }
+    S.newProd = null; f.product = e.target.value; if (!S.reg.products[f.product]?.cap_unit) f.capacity = ''; renderGenerate();
+  });
+  if (S.newProd) bindNewProductForm();
   on('#f-cap', 'input', (e) => { f.capacity = e.target.value === '' ? '' : Number(e.target.value); updateOutput(); });
   on('#f-pack', 'input', (e) => { f.pack = e.target.value === '' ? '' : Number(e.target.value); updateOutput(); });
   on('#f-size', 'change', (e) => { f.size = e.target.value; updateOutput(); });
@@ -188,7 +194,7 @@ function renderGenerate() {
   on('#f-override', 'change', (e) => { f.override = e.target.checked; if (f.override && f.version === '') f.version = computeDraft().auto.next; renderGenerate(); });
   on('#f-version', 'input', (e) => { f.version = e.target.value; updateOutput(); });
   on('#f-clear', 'click', () => { f.colours = []; renderGenerate(); });
-  on('#f-reset', 'click', () => { Object.assign(f, { brand: '', product: '', capacity: '', colours: [], size: '', pack: 1, region: '', override: false, version: '' }); renderGenerate(); });
+  on('#f-reset', 'click', () => { S.newProd = null; Object.assign(f, { brand: '', product: '', capacity: '', colours: [], size: '', pack: 1, region: '', override: false, version: '' }); renderGenerate(); });
   $('#f-colours').addEventListener('click', (e) => {
     const b = e.target.closest('[data-c]'); if (!b) return;
     const c = b.dataset.c, i = f.colours.indexOf(c);
@@ -196,6 +202,59 @@ function renderGenerate() {
     renderGenerate();
   });
   updateOutput();
+}
+
+// ---------- new product, inline ----------
+const allProductCodes = () => S.data.products.map((p) => p.code);
+/** Suggest a 3-letter code from the product name that isn't taken and doesn't clash with a variant code. */
+function suggestCode(name) {
+  const words = name.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w && !['AND', 'WITH', 'FOR', 'THE', 'OF', 'A'].includes(w));
+  if (!words.length) return '';
+  const cands = [];
+  const initials = words.map((w) => w[0]).join('');
+  if (initials.length >= 3) cands.push(initials.slice(0, 3));
+  const first = words[0], cons = first[0] + first.slice(1).replace(/[AEIOU]/g, '');
+  cands.push((initials.slice(0, 2) + (words[words.length - 1].slice(1).replace(/[AEIOU]/g, '') || 'X')).slice(0, 3));
+  cands.push((initials + cons.slice(1)).slice(0, 3), cons.slice(0, 3), first.slice(0, 3));
+  for (const a of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') cands.push((initials.slice(0, 2) || first.slice(0, 2)) + a);
+  const taken = new Set(allProductCodes());
+  return cands.find((c) => c.length === 3 && !taken.has(c) && !S.reg.colours[c] && !S.reg.sizes[c]) || '';
+}
+function newProductForm() {
+  const n = S.newProd, b = S.reg.brands[S.form.brand];
+  const chk = n.code ? checkNewCode('product', n.code, S.reg, allProductCodes()) : { errors: [], warnings: [] };
+  return `<div class="panel" style="margin-top:10px;box-shadow:none;background:var(--bg)">
+    <strong>New ${esc(b?.name || '')} product</strong>
+    <div class="field" style="margin-top:10px"><label for="np2-name">Product family</label><input id="np2-name" value="${esc(n.name)}" placeholder="e.g. Silicone bath mat"></div>
+    <div class="row">
+      <div class="field"><label for="np2-code">Code</label><input id="np2-code" value="${esc(n.code)}" maxlength="5" spellcheck="false" placeholder="3 letters">
+        <div class="hint">Suggested from the name. You can change it.</div></div>
+      <div class="field"><label for="np2-unit">Sizes</label><select id="np2-unit">${opt('', 'One size (no capacity)', n.unit)}${S.data.units.map((u) => opt(u.code, `Several, in ${u.name.toLowerCase()}`, n.unit)).join('')}</select></div>
+    </div>
+    <div id="np2-msg">${msgList('err', chk.errors) + msgList('warn', chk.warnings)}</div>
+    <div class="toolbar"><button type="button" class="btn primary" id="np2-add" ${!n.name.trim() || !n.code || chk.errors.length ? 'disabled' : ''}>Add product</button><button type="button" class="btn" id="np2-cancel">Cancel</button></div>
+    <div class="hint">It's added to the Registry as PROPOSED. You can preview SKUs straight away; confirm the code before registering one (rule 14).</div>
+  </div>`;
+}
+function bindNewProductForm() {
+  const n = S.newProd;
+  const refresh = (focusId) => { const el = $(focusId), pos = el?.selectionStart; renderGenerate(); const x = $(focusId); if (x) { x.focus(); try { x.setSelectionRange(pos, pos); } catch {} } };
+  $('#np2-name').addEventListener('input', (e) => { n.name = e.target.value; if (!n.touched) n.code = suggestCode(n.name); refresh('#np2-name'); });
+  $('#np2-code').addEventListener('input', (e) => { n.code = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); n.touched = !!n.code; refresh('#np2-code'); });
+  $('#np2-unit').addEventListener('change', (e) => { n.unit = e.target.value; });
+  $('#np2-cancel').onclick = () => { S.newProd = null; renderGenerate(); };
+  $('#np2-add').onclick = async () => {
+    const chk = checkNewCode('product', n.code, S.reg, allProductCodes());
+    if (chk.errors.length) return;
+    if (chk.warnings.length && !confirm(chk.warnings.join('\n\n') + '\n\nAdd it anyway?')) return;
+    try {
+      await store.addProduct({ code: chk.code, name: n.name.trim(), brand: S.form.brand, cap_unit: n.unit || null, status: 'PROPOSED', notes: 'Added from the Generate page' });
+      await reload();
+      S.form.product = chk.code; S.form.capacity = ''; S.newProd = null;
+      toast(`${chk.code} added as PROPOSED`);
+      renderGenerate();
+    } catch (err) { toast(err.message); }
+  };
 }
 
 function updateOutput() {
@@ -218,7 +277,7 @@ function updateOutput() {
 
   const blockers = [];
   if (!ready) blockers.push('Fix the errors above first.');
-  if (proposed) blockers.push(`Product code ${product.code} must be CONFIRMED in the Registry tab before a SKU can be registered.`);
+  if (proposed) blockers.push(`Product code ${product.code} is still PROPOSED. It must be CONFIRMED before a SKU can be registered.`);
   if (existsHere) blockers.push(`${r.sku} is already registered for ${rf.marketplace}.`);
 
   out.innerHTML = `
@@ -246,10 +305,17 @@ function updateOutput() {
         <div class="field"><label for="r-notes">Notes</label><input id="r-notes" value="${esc(rf.notes)}"></div>
         ${prev ? `<label class="inline small field"><input type="checkbox" id="r-old" ${rf.markOld ? 'checked' : ''}> Mark <code>${esc(prev.sku)}</code> as SELLING OUT</label>` : ''}
         ${msgList('warn', ready ? blockers : [])}
+        ${ready && proposed ? `<p class="small" style="margin:6px 0 10px">Has this code been agreed? <button type="button" class="link" id="confirm-code">Confirm ${esc(product.code)} now</button></p>` : ''}
         <button class="btn primary" id="register" ${blockers.length ? 'disabled' : ''}>Register ${ready ? esc(r.sku) : 'SKU'}</button>
       </div>
     </details>`;
 
+  const cc = $('#confirm-code');
+  if (cc) cc.onclick = async () => {
+    if (!confirm(`Confirm product code ${product.code} (${product.name})? Once a SKU goes live with it, the code can never change or be reused.`)) return;
+    try { await store.updateProduct(product.code, { status: 'CONFIRMED' }); await reload(); toast(`${product.code} confirmed`); updateOutput(); }
+    catch (err) { toast(err.message); }
+  };
   $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(r.sku); toast(`Copied ${r.sku}`); } catch { toast('Copy failed. Select the SKU and copy it manually.'); } };
   $('#regbox').addEventListener('toggle', (e) => { rf.open = e.target.open; });
   const bind = (id, key, rerender) => { const el = $(id); if (el) el.addEventListener('input', (e) => { rf[key] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; if (rerender) updateOutputKeepFocus(id); }); };
